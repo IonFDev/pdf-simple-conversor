@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="es" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Conversor PDF</title>
+  <!-- ═══════════════════════════════════════════════
+       SEGURIDAD
+  ═══════════════════════════════════════════════ -->
+  <!-- Content Security Policy: restringe las fuentes permitidas de scripts, estilos, fuentes e imágenes -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src  'self' 'unsafe-inline' https://cdnjs.cloudflare.com blob:;
+    style-src   'self' 'unsafe-inline' https://fonts.googleapis.com;
+    font-src    https://fonts.gstatic.com;
+    img-src     'self' data: blob:;
+    connect-src 'self' https://cdnjs.cloudflare.com blob:;
+    worker-src  blob:;
+    object-src  'none';
+    base-uri    'self';
+    form-action 'none';
+  " />
+  <!-- Impide que el navegador adivine el tipo MIME (evita ataques MIME sniffing) -->
+  <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+  <!-- Controla la información de referencia enviada al navegar -->
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <!-- Evita que la página sea embebida en iframes externos -->
+  <meta http-equiv="X-Frame-Options" content="DENY" />
+  <!-- Desactiva el sniffing XSS del IE/Edge antiguo -->
+  <meta http-equiv="X-XSS-Protection" content="1; mode=block" />
+  <!-- Restringe el acceso a APIs del navegador -->
+  <meta http-equiv="Permissions-Policy" content="
+    camera=(), microphone=(), geolocation=(), payment=(),
+    usb=(), bluetooth=(), accelerometer=(), gyroscope=()
+  " />
+  <!-- No indexar datos en caché -->
+  <meta http-equiv="Cache-Control" content="no-store" />
+
+  <!-- ═══════════════════════════════════════════════
+       RECURSOS EXTERNOS
+  ═══════════════════════════════════════════════ -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%232563eb'/%3E%3Cpath d='M7 5h7l3 3v11a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z' fill='%23fff' opacity='.92'/%3E%3Ctext x='12' y='16' font-family='Arial' font-size='6' font-weight='700' fill='%232563eb' text-anchor='middle'%3EPDF%3C/text%3E%3C/svg%3E" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:       #1b2a47;
+      --blue:       #2563eb;
+      --blue-hover: #1d4ed8;
+      --bg:         #f1f3f6;
+      --surface:    #ffffff;
+      --border:     #d1d7e0;
+      --border-mid: #b8c0cc;
+      --text:       #0f1923;
+      --text-mid:   #4a5568;
+      --text-light: #718096;
+      --success:    #16a34a;
+      --success-bg: #f0fdf4;
+      --success-border: #bbf7d0;
+      --error:      #dc2626;
+      --error-bg:   #fef2f2;
+      --error-border: #fecaca;
+      --warn-bg:    #fffbeb;
+      --radius-sm:  3px;
+      --radius:     4px;
+      --radius-md:  6px;
+      --shadow-sm:  0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    html, body { height: 100%; }
+    body {
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 14px;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    /* TOP BAR */
+    .topbar {
+      background: var(--navy);
+      height: 48px;
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .topbar-brand {
+      display: flex; align-items: center; gap: 10px;
+      color: #fff; font-weight: 600; font-size: 13px;
+      text-decoration: none;
+    }
+    .topbar-brand-icon {
+      width: 26px; height: 26px; background: var(--blue);
+      border-radius: var(--radius-sm); display: flex;
+      align-items: center; justify-content: center;
+      font-size: 13px; flex-shrink: 0; color: white; font-weight: 700;
+      overflow: hidden;
+    }
+    .topbar-brand-text { display: inline; }
+    .topbar-divider { width: 1px; height: 20px; background: rgba(255,255,255,0.15); margin: 0 16px; }
+    .topbar-module  { color: rgba(255,255,255,0.6); font-size: 13px; }
+    .topbar-right   { margin-left: auto; }
+    .topbar-badge   {
+      background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.65);
+      font-size: 11px; font-family: 'IBM Plex Mono', monospace;
+      padding: 2px 8px; border-radius: 2px; letter-spacing: 0.05em;
+    }
+
+    /* LAYOUT */
+    .app-layout {
+      display: grid;
+      grid-template-columns: 288px 1fr;
+      grid-template-rows: auto 1fr auto;
+      min-height: calc(100vh - 48px);
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px 24px 40px;
+      gap: 0 20px;
+      align-items: start;
+    }
+
+    /* PAGE HEADER */
+    .page-header {
+      grid-column: 1 / -1;
+      display: flex; align-items: baseline; justify-content: space-between;
+      padding-bottom: 16px; margin-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .page-title      { font-size: 17px; font-weight: 600; }
+    .page-title-sub  { font-weight: 400; color: var(--text-light); font-size: 13px; margin-left: 10px; }
+    .page-meta       { font-size: 12px; color: var(--text-light); font-family: 'IBM Plex Mono', monospace; }
+
+    /* PANELS */
+    .panel {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-md); box-shadow: var(--shadow-sm);
+    }
+    .panel-header {
+      padding: 10px 16px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      background: #fafbfc; border-radius: var(--radius-md) var(--radius-md) 0 0;
+    }
+    .panel-title {
+      font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-mid);
+    }
+    .panel-body { padding: 16px; }
+
+    /* SIDEBAR */
+    .sidebar {
+      display: flex; flex-direction: column; gap: 16px;
+      position: sticky; top: 68px; align-self: start;
+      max-height: calc(100vh - 88px); overflow-y: auto;
+      padding-right: 2px;
+    }
+
+    /* FORMS */
+    .form-group { margin-bottom: 13px; }
+    .form-group:last-child { margin-bottom: 0; }
+    .form-label { display: block; font-size: 12px; font-weight: 500; color: var(--text-mid); margin-bottom: 5px; }
+    .form-select {
+      width: 100%; height: 32px; padding: 0 28px 0 10px;
+      border: 1px solid var(--border-mid); border-radius: var(--radius);
+      font-family: 'IBM Plex Sans', sans-serif; font-size: 13px;
+      color: var(--text); background: var(--surface); outline: none;
+      appearance: none; -webkit-appearance: none; cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23718096'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 10px center;
+      transition: border-color 0.15s;
+    }
+    .form-select:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(37,99,235,0.12); }
+    .range-row { display: flex; align-items: center; gap: 10px; }
+    .form-range { flex: 1; accent-color: var(--blue); cursor: pointer; }
+    .range-val  { font-size: 12px; font-family: 'IBM Plex Mono', monospace; color: var(--text-mid); min-width: 50px; text-align: right; }
+    .form-sep   { height: 1px; background: var(--border); margin: 14px 0; }
+
+    /* BUTTONS */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 6px; height: 32px; padding: 0 14px; border-radius: var(--radius);
+      font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; font-weight: 500;
+      cursor: pointer; border: 1px solid transparent; transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+      text-decoration: none; white-space: nowrap;
+    }
+    .btn-primary   { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .btn-primary:hover { background: var(--blue-hover); }
+    .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-secondary { background: var(--surface); color: var(--text-mid); border-color: var(--border-mid); }
+    .btn-secondary:hover { background: var(--bg); }
+    .btn-success   { background: var(--success); color: #fff; border-color: var(--success); }
+    .btn-success:hover { background: #15803d; }
+    .btn-ghost-danger { background: none; color: var(--error); border: none; padding: 0 6px; font-size: 12px; height: 24px; }
+    .btn-ghost-danger:hover { background: var(--error-bg); border-radius: var(--radius-sm); }
+    .btn-full { width: 100%; height: 36px; font-size: 13px; }
+
+    /* DROP ZONE */
+    .drop-zone {
+      border: 1.5px dashed var(--border-mid); border-radius: var(--radius-md);
+      padding: 28px 16px; text-align: center; cursor: pointer;
+      transition: border-color 0.15s, background 0.15s; background: #fafbfc;
+    }
+    .drop-zone:hover, .drop-zone.dragging { border-color: var(--blue); background: #eff6ff; }
+    .drop-zone-icon  { font-size: 26px; display: block; margin-bottom: 8px; opacity: 0.55; }
+    .drop-zone-title { font-size: 13px; font-weight: 500; margin-bottom: 3px; }
+    .drop-zone-sub   { font-size: 12px; color: var(--text-light); }
+    .drop-zone input[type="file"] { display: none; }
+
+    /* FILE TABLE */
+    .file-table-wrap { display: none; margin-top: 12px; }
+    .file-table-wrap.visible { display: block; }
+    .file-table-scroll { max-height: 220px; overflow-y: auto; }
+    .file-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .file-table th {
+      text-align: left; font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-light);
+      padding: 6px 10px; border-bottom: 1px solid var(--border); background: var(--bg);
+    }
+    .file-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .file-table tr:last-child td { border-bottom: none; }
+    .file-table .col-name { font-weight: 500; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-table .col-pages { font-family: 'IBM Plex Mono', monospace; color: var(--text-mid); }
+
+    /* STATUS CHIPS */
+    .chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 2px;
+    }
+    .chip-pending  { background: var(--warn-bg); color: #92400e; border: 1px solid #fde68a; }
+    .chip-progress { background: #eff6ff; color: var(--blue); border: 1px solid #bfdbfe; }
+    .chip-done     { background: var(--success-bg); color: var(--success); border: 1px solid var(--success-border); }
+    .chip-error    { background: var(--error-bg); color: var(--error); border: 1px solid var(--error-border); }
+
+    /* PAGES PANEL */
+    #pagesBody        { max-height: 340px; overflow-y: auto; }
+    .pdf-group        { margin-bottom: 16px; }
+    .pdf-group:last-child { margin-bottom: 0; }
+    .pdf-group-label  { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-light); margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pages-row        { display: grid; grid-template-columns: repeat(auto-fill, 48px); gap: 8px; }
+    .page-thumb       { position: relative; border: 1.5px solid var(--border-mid); border-radius: var(--radius); overflow: hidden; cursor: pointer; transition: border-color 0.12s, opacity 0.12s; background: white; }
+    .page-thumb canvas { display: block; width: 48px; height: 64px; object-fit: contain; }
+    .page-thumb .page-lbl { position: absolute; bottom: 0; left: 0; right: 0; text-align: center; font-size: 9px; font-family: 'IBM Plex Mono', monospace; background: rgba(0,0,0,0.5); color: white; padding: 1px 0; }
+    .page-thumb.selected { border-color: var(--blue); }
+    .page-thumb.excluded { opacity: 0.3; border-color: var(--border); }
+
+    /* MAIN */
+    .main-area { display: flex; flex-direction: column; gap: 16px; }
+
+    /* PROGRESS */
+    .progress-panel { display: none; }
+    .progress-panel.visible { display: block; }
+    .progress-track { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin: 8px 0 6px; }
+    .progress-fill  { height: 100%; background: var(--blue); border-radius: 2px; transition: width 0.3s ease; width: 0%; }
+    .progress-text  { font-size: 12px; color: var(--text-mid); font-family: 'IBM Plex Mono', monospace; }
+
+    /* RESULTS TABLE */
+    .results-panel { display: none; }
+    .results-panel.visible { display: block; }
+    .results-table-scroll { max-height: 420px; overflow-y: auto; }
+    .results-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .results-table thead th { position: sticky; top: 0; z-index: 1; }
+    .results-table th {
+      text-align: left; font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-light);
+      padding: 8px 14px; border-bottom: 1px solid var(--border); background: var(--bg);
+    }
+    .results-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .results-table tr:last-child td { border-bottom: none; }
+    .res-thumb { width: 38px; height: 50px; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: white; display: flex; align-items: center; justify-content: center; }
+    .res-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .res-filename { font-weight: 500; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mono { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-mid); }
+
+    /* ALERT */
+    .alert-error { display: none; align-items: center; gap: 8px; background: var(--error-bg); border: 1px solid var(--error-border); border-left: 3px solid var(--error); color: var(--error); padding: 10px 14px; border-radius: var(--radius); font-size: 13px; }
+    .alert-error.visible { display: flex; }
+
+    /* EMPTY STATE */
+    .empty-state { text-align: center; padding: 56px 24px; color: var(--text-light); }
+    .empty-state-icon  { font-size: 32px; opacity: 0.25; margin-bottom: 14px; }
+    .empty-state-title { font-size: 14px; font-weight: 500; color: var(--text-mid); margin-bottom: 6px; }
+    .empty-state-sub   { font-size: 13px; }
+
+    /* FOOTER */
+    .app-footer { grid-column: 1 / -1; margin-top: 24px; padding-top: 12px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 12px; }
+    .app-footer p { font-size: 11px; color: var(--text-light); font-family: 'IBM Plex Mono', monospace; }
+
+    /* ═══════════════════════════════════════════════
+         RESPONSIVE
+    ═══════════════════════════════════════════════ */
+    @media (max-width: 900px) {
+      .app-layout {
+        grid-template-columns: 1fr;
+        padding: 16px 16px 32px;
+        gap: 16px;
+      }
+      .sidebar {
+        position: static; top: auto; max-height: none; overflow-y: visible; padding-right: 0;
+      }
+      .page-header { flex-direction: column; align-items: flex-start; gap: 4px; }
+      .app-footer { flex-direction: column; gap: 4px; }
+    }
+
+    @media (max-width: 640px) {
+      body { font-size: 13px; }
+      .topbar { padding: 0 14px; }
+      .topbar-module { display: none; }
+      .topbar-divider { margin: 0 10px; }
+      .app-layout { padding: 12px 12px 28px; }
+      .page-header { padding-bottom: 12px; margin-bottom: 14px; }
+      .page-title { font-size: 15px; }
+      .panel-body { padding: 12px; }
+      .drop-zone { padding: 20px 10px; }
+      .file-table .col-name { max-width: 120px; }
+      .res-filename { max-width: 130px; }
+      .results-table th, .results-table td { padding: 8px 10px; }
+      .btn-full { height: 40px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-brand">
+    <div class="topbar-brand-icon">PDF</div>
+    <span class="topbar-brand-text">Conversor PDF</span>
+  </div>
+  <div class="topbar-divider"></div>
+  <span class="topbar-module" id="topbarModule">GIF / JPG</span>
+  <div class="topbar-right">
+    <span class="topbar-badge">v1.3.0</span>
+  </div>
+</div>
+
+<div class="app-layout">
+
+  <!-- PAGE HEADER -->
+  <div class="page-header">
+    <div class="page-title">
+      Conversión PDF → <span id="headerFormat">GIF / JPG</span>
+      <span class="page-title-sub" id="headerSub">Selecciona el formato de salida en el panel de parámetros</span>
+    </div>
+    <span class="page-meta" id="summaryMeta">Sin archivos cargados</span>
+  </div>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Importar archivos</span>
+      </div>
+      <div class="panel-body">
+        <div class="drop-zone" id="dropZone">
+          <span class="drop-zone-icon">📂</span>
+          <div class="drop-zone-title">Arrastra archivos PDF aquí</div>
+          <div class="drop-zone-sub">o haz clic para examinar</div>
+          <input type="file" id="fileInput" accept=".pdf" multiple />
+        </div>
+        <input type="file" id="addMoreInput" accept=".pdf" multiple style="display:none" />
+
+        <div class="file-table-wrap" id="fileTableWrap">
+          <div class="file-table-scroll">
+            <table class="file-table">
+              <thead><tr><th>Archivo</th><th>Págs.</th><th></th></tr></thead>
+              <tbody id="fileTableBody"></tbody>
+            </table>
+          </div>
+          <div style="margin-top:10px;">
+            <button class="btn btn-secondary" style="width:100%;font-size:12px;height:30px;"
+                    onclick="document.getElementById('addMoreInput').click()">
+              + Añadir más archivos
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="settingsPanel" style="display:none;">
+      <div class="panel-header">
+        <span class="panel-title">Parámetros de conversión</span>
+      </div>
+      <div class="panel-body">
+        <div class="form-group">
+          <label class="form-label">Formato de salida</label>
+          <select class="form-select" id="outputFormat" onchange="onFormatChange()">
+            <option value="gif">GIF — Animación</option>
+            <option value="jpg">JPG — Imágenes estáticas</option>
+          </select>
+        </div>
+        <div class="form-sep"></div>
+
+        <!-- GIF OPTIONS -->
+        <div id="gifOptions">
+        <div class="form-group">
+          <label class="form-label">Intervalo de fotograma (ms)</label>
+          <div class="range-row">
+            <input type="range" class="form-range" id="frameDelay" min="100" max="3000" step="100" value="600"
+                   oninput="document.getElementById('frameDelayVal').textContent = this.value + ' ms'" />
+            <span class="range-val" id="frameDelayVal">600 ms</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Calidad de color (1 = máxima)</label>
+          <div class="range-row">
+            <input type="range" class="form-range" id="gifQuality" min="1" max="20" step="1" value="8"
+                   oninput="document.getElementById('gifQualityVal').textContent = this.value" />
+            <span class="range-val" id="gifQualityVal">8</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Resolución de salida</label>
+          <select class="form-select" id="scaleSelect">
+            <option value="0.5">50% — Comprimido</option>
+            <option value="0.75">75% — Reducido</option>
+            <option value="1" selected>100% — Original</option>
+            <option value="1.5">150% — Alta resolución</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Modo de repetición</label>
+          <select class="form-select" id="repeatSelect">
+            <option value="0" selected>Bucle infinito</option>
+            <option value="-1">Sin repetición</option>
+            <option value="1">1 repetición</option>
+            <option value="3">3 repeticiones</option>
+          </select>
+        </div>
+        </div><!-- end gifOptions -->
+
+        <!-- JPG OPTIONS -->
+        <div id="jpgOptions" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">Calidad JPG (100 = máxima)</label>
+          <div class="range-row">
+            <input type="range" class="form-range" id="jpgQuality" min="10" max="100" step="5" value="90"
+                   oninput="document.getElementById('jpgQualityVal').textContent = this.value + '%'" />
+            <span class="range-val" id="jpgQualityVal">90%</span>
+          </div>
+        </div>
+        </div><!-- end jpgOptions -->
+
+        <div class="form-sep"></div>
+        <button class="btn btn-primary btn-full" id="convertBtn" onclick="startConversion()" style="display:none;">
+          Iniciar conversión
+        </button>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="main-area">
+
+    <!-- Page selection -->
+    <div class="panel" id="pagesPanel" style="display:none;">
+      <div class="panel-header">
+        <span class="panel-title">Selección de páginas</span>
+        <span style="font-size:11px;color:var(--text-light);">Haz clic en una página para excluirla</span>
+      </div>
+      <div class="panel-body" id="pagesBody"></div>
+    </div>
+
+    <!-- Error -->
+    <div class="alert-error" id="errorMsg">
+      <span>⚠</span><span id="errorText"></span>
+    </div>
+
+    <!-- Progress -->
+    <div class="panel progress-panel" id="progressPanel">
+      <div class="panel-body">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:13px;font-weight:500;">Procesando conversión</span>
+          <span class="chip chip-progress" id="progressPct">0%</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progressBar"></div></div>
+        <div class="progress-text" id="progressLabel">Preparando archivos...</div>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div class="panel results-panel" id="resultsPanel">
+      <div class="panel-header">
+        <span class="panel-title">Archivos generados</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn btn-success" id="downloadAllBtn" onclick="downloadAll()" style="display:none;height:28px;font-size:12px;">
+            ↓ Descargar todos
+          </button>
+          <button class="btn btn-secondary" onclick="resetApp()" style="height:28px;font-size:12px;">
+            Nueva conversión
+          </button>
+        </div>
+      </div>
+      <div class="results-table-scroll" style="overflow-x:auto;">
+        <table class="results-table">
+          <thead>
+            <tr>
+              <th style="width:56px;">Vista previa</th>
+              <th>Archivo de salida</th>
+              <th id="colFramesHeader">Fotogramas</th>
+              <th>Dimensiones</th>
+              <th>Tamaño</th>
+              <th>Estado</th>
+              <th style="width:110px;"></th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Empty state -->
+    <div class="panel" id="emptyState">
+      <div class="empty-state">
+        <div class="empty-state-icon">📄</div>
+        <div class="empty-state-title">Sin documentos cargados</div>
+        <div class="empty-state-sub">Importa uno o varios archivos PDF desde el panel izquierdo para comenzar.</div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <div class="app-footer">
+    <p>Procesamiento 100% local · Sin transmisión de datos a servidores externos</p>
+    <p id="footerMeta"></p>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js"></script>
+<script>
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  let pdfFiles = [], nextGroupId = 0, generatedGifs = [], generatedOutputs = [];
+
+  function onFormatChange() {
+    const fmt = document.getElementById('outputFormat').value;
+    document.getElementById('gifOptions').style.display = fmt === 'gif' ? '' : 'none';
+    document.getElementById('jpgOptions').style.display = fmt === 'jpg' ? '' : 'none';
+    if (fmt === 'gif') {
+      document.getElementById('headerFormat').textContent = 'GIF';
+      document.getElementById('headerSub').textContent = 'Generación de animaciones desde documentos PDF';
+      document.getElementById('colFramesHeader').textContent = 'Fotogramas';
+    } else {
+      document.getElementById('headerFormat').textContent = 'JPG';
+      document.getElementById('headerSub').textContent = 'Exportación de páginas PDF como imágenes JPG';
+      document.getElementById('colFramesHeader').textContent = 'Páginas';
+    }
+  }
+
+  const dropZone    = document.getElementById('dropZone');
+  const fileInput   = document.getElementById('fileInput');
+  const addMoreInput= document.getElementById('addMoreInput');
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', e => handleFiles(e.target.files));
+  addMoreInput.addEventListener('change', e => handleFiles(e.target.files));
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragging'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragging'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.classList.remove('dragging');
+    const fs = [...e.dataTransfer.files].filter(f => f.type === 'application/pdf');
+    if (fs.length) handleFiles(fs); else showError('Solo se aceptan archivos PDF.');
+  });
+
+  async function handleFiles(fileList) {
+    hideError();
+    for (const file of [...fileList]) {
+      if (file.type !== 'application/pdf') continue;
+      try {
+        const ab  = await file.arrayBuffer();
+        const doc = await pdfjsLib.getDocument({ data: ab }).promise;
+        const entry = {
+          id: nextGroupId++, name: file.name, doc,
+          pages: Array.from({ length: doc.numPages }, (_, i) => ({ pageNum: i + 1, excluded: false }))
+        };
+        pdfFiles.push(entry);
+        addFileRow(entry);
+        await renderPageGroup(entry);
+      } catch (err) {
+        showError(`Error al leer "${file.name}": ${err.message}`);
+      }
+    }
+    if (pdfFiles.length > 0) {
+      document.getElementById('emptyState').style.display    = 'none';
+      document.getElementById('fileTableWrap').classList.add('visible');
+      document.getElementById('settingsPanel').style.display = 'block';
+      document.getElementById('convertBtn').style.display    = 'flex';
+      document.getElementById('pagesPanel').style.display    = 'block';
+      updateSummary();
+    }
+  }
+
+  function addFileRow(entry) {
+    const tr = document.createElement('tr');
+    tr.id = `file-row-${entry.id}`;
+    tr.innerHTML = `
+      <td class="col-name" title="${entry.name}">${entry.name}</td>
+      <td class="col-pages mono">${entry.pages.length}</td>
+      <td style="text-align:right;">
+        <button class="btn btn-ghost-danger" onclick="removeFile(${entry.id})" title="Eliminar">✕</button>
+      </td>`;
+    document.getElementById('fileTableBody').appendChild(tr);
+  }
+
+  async function renderPageGroup(entry) {
+    const body  = document.getElementById('pagesBody');
+    const group = document.createElement('div');
+    group.className = 'pdf-group';
+    group.id = `pg-group-${entry.id}`;
+    group.innerHTML = `<div class="pdf-group-label" title="${entry.name}">${entry.name}</div>`;
+    const row = document.createElement('div');
+    row.className = 'pages-row';
+
+    for (const p of entry.pages) {
+      const page = await entry.doc.getPage(p.pageNum);
+      const vp   = page.getViewport({ scale: 0.2 });
+      const c    = document.createElement('canvas');
+      c.width = vp.width; c.height = vp.height;
+      await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+      const thumb = document.createElement('div');
+      thumb.className = 'page-thumb selected';
+      thumb.title = `Página ${p.pageNum}`;
+      thumb.innerHTML = `<div class="page-lbl">${p.pageNum}</div>`;
+      thumb.insertBefore(c, thumb.firstChild);
+      thumb.addEventListener('click', () => {
+        p.excluded = !p.excluded;
+        thumb.className = 'page-thumb ' + (p.excluded ? 'excluded' : 'selected');
+      });
+      row.appendChild(thumb);
+    }
+    group.appendChild(row);
+    body.appendChild(group);
+  }
+
+  function removeFile(id) {
+    pdfFiles = pdfFiles.filter(f => f.id !== id);
+    document.getElementById(`file-row-${id}`)?.remove();
+    document.getElementById(`pg-group-${id}`)?.remove();
+    if (!pdfFiles.length) {
+      document.getElementById('fileTableWrap').classList.remove('visible');
+      document.getElementById('settingsPanel').style.display = 'none';
+      document.getElementById('pagesPanel').style.display    = 'none';
+      document.getElementById('emptyState').style.display    = 'block';
+      document.getElementById('summaryMeta').textContent     = 'Sin archivos cargados';
+    } else updateSummary();
+  }
+
+  function updateSummary() {
+    const total = pdfFiles.reduce((s, f) => s + f.pages.length, 0);
+    document.getElementById('summaryMeta').textContent =
+      `${pdfFiles.length} archivo${pdfFiles.length !== 1 ? 's' : ''} cargado${pdfFiles.length !== 1 ? 's' : ''} · ${total} páginas`;
+    document.getElementById('footerMeta').textContent =
+      `${pdfFiles.length} PDF${pdfFiles.length !== 1 ? 's' : ''} en cola`;
+  }
+
+  // ── CONVERSION ──
+  async function startConversion() {
+    const fmt = document.getElementById('outputFormat').value;
+    if (fmt === 'jpg') { await startConversionJPG(); return; }
+    if (!pdfFiles.length) return;
+    const delay   = parseInt(document.getElementById('frameDelay').value);
+    const quality = parseInt(document.getElementById('gifQuality').value);
+    const scale   = parseFloat(document.getElementById('scaleSelect').value);
+    const repeat  = parseInt(document.getElementById('repeatSelect').value);
+
+    hideError();
+    generatedOutputs = [];
+    document.getElementById('convertBtn').disabled = true;
+    document.getElementById('progressPanel').classList.add('visible');
+    document.getElementById('resultsPanel').classList.remove('visible');
+
+    const tbody = document.getElementById('resultsBody');
+    tbody.innerHTML = '';
+
+    const rows = pdfFiles.map(entry => {
+      const gifName = entry.name.replace(/\.pdf$/i, '') + '.gif';
+      const tr = document.createElement('tr');
+      tr.id = `res-${entry.id}`;
+      tr.innerHTML = `
+        <td><div class="res-thumb" id="rt-${entry.id}"></div></td>
+        <td><div class="res-filename" title="${gifName}">${gifName}</div></td>
+        <td class="mono" id="rf-${entry.id}">—</td>
+        <td class="mono" id="rd-${entry.id}">—</td>
+        <td class="mono" id="rs-${entry.id}">—</td>
+        <td id="rstat-${entry.id}"><span class="chip chip-pending">Pendiente</span></td>
+        <td id="ract-${entry.id}"></td>`;
+      tbody.appendChild(tr);
+      return { entry, gifName };
+    });
+
+    document.getElementById('resultsPanel').classList.add('visible');
+    const total = pdfFiles.length;
+
+    for (let i = 0; i < rows.length; i++) {
+      const { entry, gifName } = rows[i];
+      const pages = entry.pages.filter(p => !p.excluded).map(p => p.pageNum);
+
+      setProgress(Math.round((i / total) * 100), `Procesando ${i + 1} / ${total}: ${entry.name}`);
+      document.getElementById(`rstat-${entry.id}`).innerHTML = `<span class="chip chip-progress">Procesando</span>`;
+
+      if (!pages.length) {
+        document.getElementById(`rstat-${entry.id}`).innerHTML = `<span class="chip chip-error">Sin páginas</span>`;
+        continue;
+      }
+
+      try {
+        const frames = [];
+        for (const pn of pages) {
+          const page = await entry.doc.getPage(pn);
+          const vp   = page.getViewport({ scale });
+          const c    = document.createElement('canvas');
+          c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+          const ctx  = c.getContext('2d');
+          ctx.fillStyle = 'white'; ctx.fillRect(0, 0, c.width, c.height);
+          await page.render({ canvasContext: ctx, viewport: vp }).promise;
+          frames.push(c);
+        }
+
+        const gifBlob = await buildGIF(frames, delay, quality, repeat, p => {
+          const pct = Math.round((i / total) * 100 + (p * 100 / total));
+          setProgress(pct, `Codificando GIF ${i + 1} / ${total}...`);
+        });
+
+        const url   = URL.createObjectURL(gifBlob);
+        const sizeKB = (gifBlob.size / 1024).toFixed(1);
+        generatedOutputs.push({ name: gifName, url });
+
+        document.getElementById(`rt-${entry.id}`).innerHTML    = `<img src="${url}" alt="" />`;
+        document.getElementById(`rf-${entry.id}`).textContent  = pages.length;
+        document.getElementById(`rd-${entry.id}`).textContent  = `${frames[0].width}×${frames[0].height}`;
+        document.getElementById(`rs-${entry.id}`).textContent  = `${sizeKB} KB`;
+        document.getElementById(`rstat-${entry.id}`).innerHTML = `<span class="chip chip-done">Completado</span>`;
+        document.getElementById(`ract-${entry.id}`).innerHTML  =
+          `<a class="btn btn-success" href="${url}" download="${gifName}" style="height:28px;font-size:12px;padding:0 10px;">↓ Descargar</a>`;
+
+      } catch (err) {
+        document.getElementById(`rstat-${entry.id}`).innerHTML = `<span class="chip chip-error">Error</span>`;
+      }
+    }
+
+    setProgress(100, `Conversión completada — ${generatedOutputs.length} de ${total} archivo${total !== 1 ? 's' : ''} generado${total !== 1 ? 's' : ''}.`);
+    document.getElementById('convertBtn').disabled = false;
+    if (generatedOutputs.length > 1)
+      document.getElementById('downloadAllBtn').style.display = 'inline-flex';
+  }
+
+  async function startConversionJPG() {
+    if (!pdfFiles.length) return;
+    const quality = parseInt(document.getElementById('jpgQuality').value) / 100;
+    const scale   = parseFloat(document.getElementById('scaleSelect').value);
+
+    hideError();
+    generatedOutputs = [];
+    document.getElementById('convertBtn').disabled = true;
+    document.getElementById('progressPanel').classList.add('visible');
+    document.getElementById('resultsPanel').classList.remove('visible');
+
+    const tbody = document.getElementById('resultsBody');
+    tbody.innerHTML = '';
+
+    const rows = pdfFiles.map(entry => {
+      const pages = entry.pages.filter(p => !p.excluded).map(p => p.pageNum);
+      const isMulti = pages.length > 1;
+      const baseName = entry.name.replace(/\.pdf$/i, '');
+      const outName  = isMulti ? baseName + '.zip' : baseName + '.jpg';
+      const tr = document.createElement('tr');
+      tr.id = `res-${entry.id}`;
+      tr.innerHTML = `
+        <td><div class="res-thumb" id="rt-${entry.id}"></div></td>
+        <td><div class="res-filename" title="${outName}">${outName}</div></td>
+        <td class="mono" id="rf-${entry.id}">—</td>
+        <td class="mono" id="rd-${entry.id}">—</td>
+        <td class="mono" id="rs-${entry.id}">—</td>
+        <td id="rstat-${entry.id}"><span class="chip chip-pending">Pendiente</span></td>
+        <td id="ract-${entry.id}"></td>`;
+      tbody.appendChild(tr);
+      return { entry, outName, baseName, isMulti, pages };
+    });
+
+    document.getElementById('resultsPanel').classList.add('visible');
+    const total = pdfFiles.length;
+
+    for (let i = 0; i < rows.length; i++) {
+      const { entry, outName, baseName, isMulti, pages } = rows[i];
+
+      setProgress(Math.round((i / total) * 100), `Procesando ${i + 1} / ${total}: ${entry.name}`);
+      document.getElementById(`rstat-${entry.id}`).innerHTML = `<span class="chip chip-progress">Procesando</span>`;
+
+      if (!pages.length) {
+        document.getElementById(`rstat-${entry.id}`).innerHTML = `<span class="chip chip-error">Sin páginas</span>`;
+        continue;
+      }
+
+      try {
+        const jpgBlobs = [];
+        let dims = '';
+        for (const pn of pages) {
+          const page = await entry.doc.getPage(pn);
+          const vp   = page.getViewport({ scale });
+          const c    = document.createElement('canvas');
+          c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+          const ctx  = c.getContext('2d');
+          ctx.fillStyle = 'white'; ctx.fillRect(0, 0, c.width, c.height);
+          await page.render({ canvasContext: ctx, viewport: vp }).promise;
+          dims = `${c.width}×${c.height}`;
+          const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', quality));
+          const jpgName = pages.length === 1 ? `${baseName}.jpg` : `${baseName}_p${pn}.jpg`;
+          jpgBlobs.push({ blob, name: jpgName });
+          const pct = Math.round((i / total) * 100 + ((jpgBlobs.length / pages.length) * 80 / total));
+          setProgress(pct, `Renderizando página ${pn} de ${entry.name}...`);
+        }
+
+        let url, sizeKB;
+        if (isMulti) {
+          const zip = new JSZip();
+          for (const { blob, name } of jpgBlobs) zip.file(name, blob);
+          const zipBlob = await zip.generateAsync({ type: 'blob' }, meta => {
+            const pct = Math.round((i / total) * 100 + (meta.percent * 20 / total));
+            setProgress(pct, `Comprimiendo ZIP ${i + 1} / ${total}...`);
+          });
+          url    = URL.createObjectURL(zipBlob);
+          sizeKB = (zipBlob.size / 1024).toFixed(1);
+        } else {
+          url    = URL.createObjectURL(jpgBlobs[0].blob);
+          sizeKB = (jpgBlobs[0].blob.size / 1024).toFixed(1);
+        }
+
+        generatedOutputs.push({ name: outName, url });
+
+        // Preview: first page
+        const previewUrl = isMulti ? URL.createObjectURL(jpgBlobs[0].blob) : url;
+        document.getElementById(`rt-${entry.id}`).innerHTML    = `<img src="${previewUrl}" alt="" />`;
+        document.getElementById(`rf-${entry.id}`).textContent  = pages.length;
+        document.getElementById(`rd-${entry.id}`).textContent  = dims;
+        document.getElementById(`rs-${entry.id}`).textContent  = `${sizeKB} KB`;
+        document.getElementById(`rstat-${entry.id}`).innerHTML = `<span class="chip chip-done">Completado</span>`;
+        document.getElementById(`ract-${entry.id}`).innerHTML  =
+          `<a class="btn btn-success" href="${url}" download="${outName}" style="height:28px;font-size:12px;padding:0 10px;">↓ Descargar${isMulti ? ' ZIP' : ''}</a>`;
+
+      } catch (err) {
+        document.getElementById(`rstat-${entry.id}`).innerHTML = `<span class="chip chip-error">Error</span>`;
+      }
+    }
+
+    setProgress(100, `Conversión completada — ${generatedOutputs.length} de ${total} archivo${total !== 1 ? 's' : ''} generado${total !== 1 ? 's' : ''}.`);
+    document.getElementById('convertBtn').disabled = false;
+    if (generatedOutputs.length > 1)
+      document.getElementById('downloadAllBtn').style.display = 'inline-flex';
+  }
+
+  async function downloadAll() {
+    for (const { name, url } of generatedOutputs) {
+      const a = document.createElement('a');
+      a.href = url; a.download = name; a.click();
+      await new Promise(r => setTimeout(r, 300));
+    }
+  }
+
+  let gifWorkerBlobURL = null;
+  async function getWorkerBlobURL() {
+    if (gifWorkerBlobURL) return gifWorkerBlobURL;
+    const resp = await fetch('https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js');
+    const blob = new Blob([await resp.text()], { type: 'application/javascript' });
+    return gifWorkerBlobURL = URL.createObjectURL(blob);
+  }
+
+  async function buildGIF(frames, delay, quality, repeat, onProgress) {
+    const workerScript = await getWorkerBlobURL();
+    return new Promise((resolve, reject) => {
+      const gif = new GIF({ workers: 2, quality, repeat, workerScript });
+      frames.forEach(c => gif.addFrame(c, { delay, copy: true }));
+      gif.on('progress', onProgress);
+      gif.on('finished', resolve);
+      gif.on('error', reject);
+      gif.render();
+    });
+  }
+
+  function setProgress(pct, label) {
+    document.getElementById('progressBar').style.width    = pct + '%';
+    document.getElementById('progressLabel').textContent  = label;
+    document.getElementById('progressPct').textContent    = pct + '%';
+  }
+
+  function showError(msg) {
+    document.getElementById('errorText').textContent = msg;
+    document.getElementById('errorMsg').classList.add('visible');
+  }
+  function hideError() {
+    document.getElementById('errorMsg').classList.remove('visible');
+  }
+
+  function resetApp() {
+    pdfFiles = []; generatedOutputs = []; nextGroupId = 0;
+    ['fileTableBody','pagesBody','resultsBody'].forEach(id => document.getElementById(id).innerHTML = '');
+    document.getElementById('fileTableWrap').classList.remove('visible');
+    document.getElementById('settingsPanel').style.display  = 'none';
+    document.getElementById('pagesPanel').style.display     = 'none';
+    document.getElementById('progressPanel').classList.remove('visible');
+    document.getElementById('resultsPanel').classList.remove('visible');
+    document.getElementById('downloadAllBtn').style.display = 'none';
+    document.getElementById('emptyState').style.display     = 'block';
+    document.getElementById('summaryMeta').textContent      = 'Sin archivos cargados';
+    document.getElementById('footerMeta').textContent       = '';
+    document.getElementById('progressBar').style.width      = '0%';
+    fileInput.value = ''; addMoreInput.value = '';
+    hideError();
+  }
+</script>
+</body>
+</html>
